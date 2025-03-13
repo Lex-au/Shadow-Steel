@@ -57,7 +57,7 @@
                     let fileCell = document.createElement("td");
                     
                     categoryCell.textContent = category.replace(/\\/g, " / "); // Format folder name
-                    fileCell.innerHTML = files.map(file => `<a href="docs/${category}/${file}" target="_blank">${file}</a>`).join("<br>");
+                    fileCell.innerHTML = files.map(file => `<a href="${category}/${file}" target="_blank">${file}</a>`).join("<br>");
                     
                     row.appendChild(categoryCell);
                     row.appendChild(fileCell);
