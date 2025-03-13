@@ -2,7 +2,7 @@
 
 A modern real-time strategy game built with React, TypeScript, and p5.js, featuring classic RTS mechanics inspired by Command & Conquer.
 
-![Game Screenshot]()
+![Game Screenshot](https://github.com/Lex-au/Shadow-Steel/blob/main/src/game/Demo/Prototype%20Build.png)
 
 ## Features
 
