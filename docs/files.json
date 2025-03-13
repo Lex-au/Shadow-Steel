@@ -1,0 +1,126 @@
+{
+    "": [
+        "index.html"
+    ],
+    "Music": [],
+    "Music\\AEGIS": [
+        "AEGIS - Track 01 (Control).mp3",
+        "AEGIS - Track 02 (Command).mp3"
+    ],
+    "Music\\Misc": [
+        "S&S - AEGIS (Victory).mp3",
+        "S&S - Cinderum.mp3",
+        "S&S - Menu Alt.mp3",
+        "S&S - RAVEN (Victory).mp3"
+    ],
+    "Music\\Raven": [
+        "RAVEN - Track 01 (Free).mp3"
+    ],
+    "Terrain Assets": [],
+    "Terrain Assets\\Desert tiles zone 1": [
+        "tile_0_0.png",
+        "tile_0_1.png",
+        "tile_0_10.png",
+        "tile_0_11.png",
+        "tile_0_12.png",
+        "tile_0_13.png",
+        "tile_0_14.png",
+        "tile_0_15.png",
+        "tile_0_16.png",
+        "tile_0_17.png",
+        "tile_0_18.png",
+        "tile_0_19.png",
+        "tile_0_2.png",
+        "tile_0_20.png",
+        "tile_0_21.png",
+        "tile_0_22.png",
+        "tile_0_23.png",
+        "tile_0_3.png",
+        "tile_0_4.png",
+        "tile_0_5.png",
+        "tile_0_6.png",
+        "tile_0_7.png",
+        "tile_0_8.png",
+        "tile_0_9.png",
+        "tile_1_0.png",
+        "tile_21_23.png"
+    ],
+    "Terrain Assets\\Desert tiles zone 2": [
+        "tile_12_15.png",
+        "tile_4_12.png",
+        "tile_4_16.png",
+        "tile_4_8.png",
+        "tile_5_13.png",
+        "tile_7_21.png",
+        "tile_8_15.png",
+        "tile_8_16.png",
+        "tile_8_18.png"
+    ],
+    "Terrain Assets\\Desert tiles zone 3": [
+        "tile_22_23.png",
+        "tile_23_0.png",
+        "tile_23_1.png",
+        "tile_23_10.png",
+        "tile_23_11.png",
+        "tile_23_12.png",
+        "tile_23_13.png",
+        "tile_23_14.png",
+        "tile_23_15.png",
+        "tile_23_16.png",
+        "tile_23_17.png",
+        "tile_23_18.png",
+        "tile_23_19.png",
+        "tile_23_2.png",
+        "tile_23_20.png",
+        "tile_23_21.png",
+        "tile_23_22.png",
+        "tile_23_23.png",
+        "tile_23_3.png",
+        "tile_23_4.png",
+        "tile_23_5.png",
+        "tile_23_6.png",
+        "tile_23_7.png",
+        "tile_23_8.png",
+        "tile_23_9.png"
+    ],
+    "Terrain Assets\\Fauna": [
+        "tile_12_20.png",
+        "tile_15_13.png",
+        "tile_18_2.png",
+        "tile_19_9.png",
+        "tile_20_17.png",
+        "tile_20_21.png",
+        "tile_20_9.png",
+        "tile_21_10.png",
+        "tile_21_2.png",
+        "tile_21_20.png",
+        "tile_21_21.png",
+        "tile_21_3.png",
+        "tile_2_2.png",
+        "tile_2_3.png"
+    ],
+    "Terrain Assets\\Resource": [
+        "tile_14_6.png"
+    ],
+    "Terrain Assets\\Rock Terrain": [
+        "tile_12_10.png",
+        "tile_12_11.png",
+        "tile_12_12.png",
+        "tile_12_13.png",
+        "tile_13_10.png",
+        "tile_13_11.png",
+        "tile_13_13.png",
+        "tile_7_2.png",
+        "tile_7_3.png",
+        "tile_7_5.png",
+        "tile_8_2.png",
+        "tile_8_3.png",
+        "tile_8_5.png"
+    ],
+    "Terrain Assets\\Rocks": [
+        "tile_12_16.png",
+        "tile_13_16.png",
+        "tile_21_18.png",
+        "tile_7_20.png"
+    ]
+}

@@ -3,81 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadow Steel - Files</title>
-    <script>
-        async function fetchDocs() {
-            const basePath = "docs/";
-            const table = document.getElementById("fileTable");
-
-            // List of subdirectories to fetch
-            const categories = [
-                "Music/AEGIS",
-                "Music/Misc",
-                "Music/Raven",
-                "Terrain Assets/Desert tiles zone 1",
-                "Terrain Assets/Desert tiles zone 2",
-                "Terrain Assets/Desert tiles zone 3",
-                "Terrain Assets/Fauna",
-                "Terrain Assets/Resource",
-                "Terrain Assets/Rock Terrain",
-                "Terrain Assets/Rocks"
-            ];
-
-            for (let category of categories) {
-                let row = table.insertRow();
-                let cell = row.insertCell();
-                cell.colSpan = 2;
-                cell.innerHTML = `<strong>${category.replace(/\//g, " > ")}</strong>`;
-                cell.style.backgroundColor = "#222";
-                cell.style.color = "#fff";
-
-                try {
-                    let response = await fetch(basePath + category);
-                    if (!response.ok) throw new Error("Directory not accessible");
-
-                    let parser = new DOMParser();
-                    let doc = parser.parseFromString(await response.text(), "text/html");
-                    let links = [...doc.querySelectorAll("a")];
-
-                    links.forEach(link => {
-                        let fileName = link.textContent;
-                        if (!fileName.endsWith("/")) { // Exclude subfolders
-                            let row = table.insertRow();
-                            row.insertCell().textContent = fileName;
-                            row.insertCell().innerHTML = `<a href="${basePath + category}/${fileName}" target="_blank">Download</a>`;
-                        }
-                    });
-                } catch (error) {
-                    let row = table.insertRow();
-                    row.insertCell().colSpan = 2;
-                    row.insertCell().textContent = "Error loading contents.";
-                }
-            }
-        }
-    </script>
+    <title>Shadow Steel - File Index</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #fff;
-            text-align: center;
             margin: 20px;
+            background-color: #121212;
+            color: #ffffff;
         }
         table {
-            width: 80%;
-            margin: auto;
+            width: 100%;
             border-collapse: collapse;
-            background: #1c1c1c;
         }
         th, td {
             padding: 10px;
-            border: 1px solid #444;
+            border: 1px solid #333;
+            text-align: left;
         }
         th {
-            background: #333;
+            background-color: #222;
         }
         a {
-            color: #ffcc00;
+            color: #1E90FF;
             text-decoration: none;
         }
         a:hover {
@@ -85,13 +32,39 @@
         }
     </style>
 </head>
-<body onload="fetchDocs()">
-    <h1>Shadow Steel - File Browser</h1>
+<body>
+    <h1>Shadow Steel - File Index</h1>
     <table id="fileTable">
-        <tr>
-            <th>File Name</th>
-            <th>Link</th>
-        </tr>
+        <thead>
+            <tr>
+                <th>Category</th>
+                <th>Files</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
     </table>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", async () => {
+            const response = await fetch("files.json"); // Load JSON file
+            const fileData = await response.json();
+            const tableBody = document.querySelector("#fileTable tbody");
+            
+            for (const [category, files] of Object.entries(fileData)) {
+                if (files.length > 0) {
+                    let row = document.createElement("tr");
+                    let categoryCell = document.createElement("td");
+                    let fileCell = document.createElement("td");
+                    
+                    categoryCell.textContent = category.replace(/\\/g, " / "); // Format folder name
+                    fileCell.innerHTML = files.map(file => `<a href="docs/${category}/${file}" target="_blank">${file}</a>`).join("<br>");
+                    
+                    row.appendChild(categoryCell);
+                    row.appendChild(fileCell);
+                    tableBody.appendChild(row);
+                }
+            }
+        });
+    </script>
 </body>
 </html>
