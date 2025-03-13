@@ -8,18 +8,60 @@ export class InputSystem {
   private isDragging = false;
   private dragStart: Vector | null = null;
   private lastRightClick = 0;
-  private hoveredBuilding: Building | null = null;
+  private minimapInteractionActive = false;
+  private isMinimapDragging = false;
+  private hoveredBuilding: Entity | null = null;
   private hoveredMCV: boolean = false;
+  private isRemappingKey: string | null = null;
   private mouseWasPressed = false;
+  private wasEscapePressed = false;
   public selectionBox: { start: Vector; end: Vector } | null = null;
   private readonly SIDEBAR_WIDTH = 200;
+  private readonly MINIMAP_SIZE = 200;
 
   constructor(
     private p: p5,
     private gameState: GameState
   ) {}
 
+  private updateMinimapPosition(): void {
+    if (!this.isMinimapDragging) return;
+    
+    const mapX = this.p.width - this.SIDEBAR_WIDTH;
+    const worldX = ((this.p.mouseX - mapX) / this.MINIMAP_SIZE) * this.gameState.map.worldWidth;
+    const worldY = (this.p.mouseY / this.MINIMAP_SIZE) * this.gameState.map.worldHeight;
+    
+    this.gameState.camera.position.x = Math.max(0, Math.min(
+      worldX - this.p.width / 2,
+      this.gameState.map.worldWidth - this.p.width
+    ));
+    this.gameState.camera.position.y = Math.max(0, Math.min(
+      worldY - this.p.height / 2,
+      this.gameState.map.worldHeight - this.p.height
+    ));
+  }
+
+  private isOverMinimap(x: number, y: number): boolean {
+    const mapX = this.p.width - this.SIDEBAR_WIDTH;
+    return x >= mapX && x <= mapX + this.MINIMAP_SIZE &&
+           y >= 0 && y <= this.MINIMAP_SIZE;
+  }
+
   public update(): void {
+    // Check for escape key to toggle menu
+    if (this.p.keyIsPressed && this.p.keyCode === this.gameState.keybindings.escape && !this.wasEscapePressed) {
+      this.wasEscapePressed = true;
+      if (!this.gameState.isMenuOpen) {
+        this.gameState.isMenuOpen = true;
+      } else {
+        this.gameState.isMenuOpen = false;
+        this.gameState.menuTab = null;
+      }
+      return;
+    } else if (!this.p.keyIsPressed) {
+      this.wasEscapePressed = false;
+    }
+
     // Update camera position
     this.gameState.camera.update();
 
@@ -69,6 +111,26 @@ export class InputSystem {
     this.handleBuildingPlacement();
   }
 
+  private isOverMinimap(x: number, y: number): boolean {
+    const mapX = this.p.width - this.SIDEBAR_WIDTH;
+    return x >= mapX && x <= mapX + this.MINIMAP_SIZE &&
+           y >= 0 && y <= this.MINIMAP_SIZE;
+  }
+
+  private isOverRadar(x: number, y: number): boolean {
+    const hasRadar = this.gameState.buildings.some(b => 
+      b.definition.name === 'Radar' && 
+      b.isAlive() && 
+      !this.gameState.isPowerShortage
+    );
+    return hasRadar && x > this.p.width - this.SIDEBAR_WIDTH && y > this.MINIMAP_SIZE + 50;
+  }
+
+  private isOverBuildMenu(x: number, y: number): boolean {
+    const menuY = this.MINIMAP_SIZE + 130; // Below radar area
+    return x > this.p.width - this.SIDEBAR_WIDTH && y > menuY;
+  }
+
   private handleBuildingPlacement(): void {
     if (this.gameState.buildingToPlace && this.p.mouseButton === this.p.LEFT && this.p.mouseIsPressed) {
       // Check if mouse is over UI elements
@@ -88,6 +150,30 @@ export class InputSystem {
   }
 
   private handleMouseInput(): void {
+    // Track minimap interaction state
+    if (this.p.mouseIsPressed && this.p.mouseButton === this.p.LEFT) {
+      if (!this.minimapInteractionActive) {
+        this.minimapInteractionActive = this.isOverMinimap(this.p.mouseX, this.p.mouseY);
+      }
+    } else {
+      this.minimapInteractionActive = false;
+    }
+
+    // Handle minimap navigation
+    if (this.minimapInteractionActive) {
+      const hasRadar = this.gameState.buildings.some(b => 
+        b.definition.name === 'Radar' && 
+        b.isAlive() && 
+        !this.gameState.isPowerShortage
+      );
+
+      if (hasRadar) {
+        this.isMinimapDragging = true;
+        this.updateMinimapPosition();
+        return;
+      }
+    }
+
     // Update resource hover states
     const worldX = this.p.mouseX + this.gameState.camera.position.x;
     const worldY = this.p.mouseY + this.gameState.camera.position.y;
@@ -100,10 +186,9 @@ export class InputSystem {
         worldY <= resource.position.y + 48
       );
     });
-    
+
     // Handle right-click to cancel building placement
     if (this.p.mouseIsPressed && this.p.mouseButton === this.p.RIGHT) {
-      // Allow right-click cancel even when over UI
       const now = Date.now();
       if (now - this.lastRightClick > 200) { // Debounce to prevent multiple cancels
         this.gameState.buildingToPlace = null;
@@ -112,7 +197,7 @@ export class InputSystem {
     }
 
     // Handle selection box dragging
-    if (this.p.mouseIsPressed && this.p.mouseButton === this.p.LEFT) {
+    if (this.p.mouseIsPressed && this.p.mouseButton === this.p.LEFT && !this.minimapInteractionActive) {
       if (!this.isDragging) {
         // Store initial click position
         this.mouseWasPressed = true;
@@ -123,6 +208,9 @@ export class InputSystem {
         // Only start dragging if mouse moves
         if (this.p.movedX !== 0 || this.p.movedY !== 0) {
           this.isDragging = true;
+          if (this.isOverMinimap(this.p.mouseX, this.p.mouseY)) {
+            this.isDragging = false;
+          }
         }
       } else if (this.isDragging) {
         // Update selection box
@@ -132,13 +220,22 @@ export class InputSystem {
           start: this.dragStart!,
           end: new Vector(worldX, worldY)
         };
-        
+
         // Update selected entities based on box
         if (!this.isOverUI(this.p.mouseX, this.p.mouseY)) {
           this.updateSelectionFromBox();
         }
       }
     } else if (this.mouseWasPressed) {
+      this.isMinimapDragging = false;
+      
+      // Only handle selection if we weren't using the minimap
+      if (this.minimapInteractionActive) {
+        this.minimapInteractionActive = false;
+        this.mouseWasPressed = false;
+        return;
+      }
+      
       // Handle single click selection on mouse release
       if (!this.isOverUI(this.p.mouseX, this.p.mouseY) && !this.isDragging) {
         const worldPos = new Vector(
@@ -172,7 +269,7 @@ export class InputSystem {
       this.dragStart = null;
       this.selectionBox = null;
     }
-    
+
     // Handle right-click movement command
     if (this.p.mouseIsPressed && this.p.mouseButton === this.p.RIGHT && !this.isOverUI(this.p.mouseX, this.p.mouseY)) {
       const worldX = this.p.mouseX + this.gameState.camera.position.x;
@@ -189,6 +286,16 @@ export class InputSystem {
         }
       });
     }
+  }
+
+  private isOverUI(x: number, y: number): boolean {
+    // Check if over sidebar
+    if (x > this.p.width - this.SIDEBAR_WIDTH) return true;
+    
+    // Check if over bottom options bar
+    if (y > this.p.height - 30) return true;
+    
+    return false;
   }
 
   private getEntityAtPosition(x: number, y: number): Entity | null {
@@ -231,9 +338,6 @@ export class InputSystem {
   private updateSelectionFromBox(): void {
     if (!this.selectionBox) return;
     
-    // Reset hover states
-    this.gameState.resources.forEach(resource => resource.isHovered = false);
-    
     const { start, end } = this.selectionBox;
     const left = Math.min(start.x, end.x);
     const right = Math.max(start.x, end.x);
@@ -274,19 +378,5 @@ export class InputSystem {
   private isEntityInBox(entity: Entity, left: number, right: number, top: number, bottom: number): boolean {
     return entity.position.x >= left && entity.position.x <= right &&
            entity.position.y >= top && entity.position.y <= bottom;
-  }
-
-  private handleKeyboardInput(): void {
-    // Add keyboard controls here
-  }
-
-  private isOverUI(x: number, y: number): boolean {
-    // Check if over sidebar
-    if (x > this.p.width - this.SIDEBAR_WIDTH) return true;
-    
-    // Check if over bottom options bar
-    if (y > this.p.height - 30) return true;
-    
-    return false;
   }
 }

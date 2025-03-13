@@ -28,6 +28,31 @@ export class GameState {
   public isBaseDeployed: boolean = false;
   public keyPressed: number | null = null;
   public p: p5;
+  public isMenuOpen: boolean = false;
+  public menuTab: 'controls' | 'jukebox' | null = null;
+  public volume: number = 0.2;
+  public trackProgress: number = 0;
+  public isPlaying: boolean = false;
+  public isRepeat: boolean = false;
+  public isShuffle: boolean = false;
+  public currentTrack: number = Math.floor(Math.random() * 7); // Random initial track
+  public keybindings: {
+    moveUp: number;
+    moveDown: number;
+    moveLeft: number;
+    moveRight: number;
+    halt: number;
+    deploy: number;
+    escape: number;
+  } = {
+    moveUp: 87, // W
+    moveDown: 83, // S
+    moveLeft: 65, // A
+    moveRight: 68, // D
+    halt: 72, // H
+    deploy: 66, // B
+    escape: 27, // ESC
+  };
   
   constructor(p: p5) {
     this.p = p;

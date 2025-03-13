@@ -6,6 +6,8 @@ import { UnitSystem } from '../systems/UnitSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { MapSystem } from '../systems/MapSystem';
 import { UISystem } from '../systems/UISystem';
+import { AudioSystem } from '../systems/AudioSystem';
+import { GAME_TRACKS } from '../config/tracks';
 
 export class GameEngine {
   private p: p5;
@@ -17,6 +19,7 @@ export class GameEngine {
     resources: ResourceSystem;
     map: MapSystem;
     ui: UISystem;
+    audio: AudioSystem;
   };
 
   constructor(p: p5) {
@@ -30,11 +33,15 @@ export class GameEngine {
       units: new UnitSystem(this.gameState),
       resources: new ResourceSystem(this.gameState),
       map: new MapSystem(this.gameState),
-      ui: new UISystem(p, this.gameState)
+      ui: new UISystem(p, this.gameState),
+      audio: new AudioSystem(this.gameState)
     };
     
     // Assign systems after initialization
     this.gameState.systems = this.systems;
+    
+    // Initialize audio tracks
+    this.systems.audio.setTracks(GAME_TRACKS);
   }
 
   public update(): void {
@@ -43,6 +50,7 @@ export class GameEngine {
     this.systems.units.update();
     this.systems.resources.update();
     this.systems.map.update();
+    this.systems.audio.update();
     
     // Render last
     this.systems.render.update();

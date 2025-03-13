@@ -2,31 +2,39 @@ import p5 from 'p5';
 import { GameState } from '../state/GameState';
 import { BuildingDefinition, RAVEN_BUILDINGS } from '../factions/buildings';
 import { TERRAIN_TYPES } from '../map/Terrain';
+import { MenuSystem } from './MenuSystem';
+import { GridSystem } from '../ui/GridSystem';
+import { TooltipSystem } from '../ui/TooltipSystem';
+import { MinimapSystem } from '../ui/MinimapSystem';
 
 export class UISystem {
-  // Configuration constants
   private readonly SIDEBAR_WIDTH = 200;
   private readonly MINIMAP_SIZE = 200;
-  private readonly TAB_HEIGHT = 25;
-  private readonly OPTIONS_BAR_HEIGHT = 26;
-  private readonly GRID_SIZE = 95;
-  private readonly GRID_GAP = 2.5;
+  private readonly CATEGORY_SIZE = 40;
+  private readonly OPTIONS_BAR_HEIGHT = 30;
+  private readonly GRID_SIZE = 90; // Slightly smaller to fit grid better
+  private readonly CELL_PADDING = 8;
   private readonly INFO_PANEL_HEIGHT = 50;
   private radarAngle = 0;
   private minimapBuffer: p5.Graphics | null = null;
-
-  // UI State
-  private selectedTab: 'construction' | 'units' = 'construction';
+  private selectedCategory: 'construction' | 'infantry' | 'vehicles' | 'defense' = 'construction';
   private scrollY = 0;
   private isDragging = false;
   private isMinimapDragging = false;
   private hoveredBuildingDef: BuildingDefinition | null = null;
   private lastMouseY = 0;
   private overlayInfo: { building: BuildingDefinition; x: number; y: number } | null = null;
+  private menuSystem: MenuSystem;
+  private gridSystem: GridSystem;
+  private tooltipSystem: TooltipSystem;
+  private minimapSystem: MinimapSystem;
 
   constructor(private p: p5, private gameState: GameState) {
     this.setupInputHandlers();
-    this.initializeMinimapBuffer();
+    this.menuSystem = new MenuSystem(p, gameState);
+    this.gridSystem = new GridSystem(p);
+    this.tooltipSystem = new TooltipSystem(p);
+    this.minimapSystem = new MinimapSystem(p, gameState, this.MINIMAP_SIZE);
   }
 
   private initializeMinimapBuffer(): void {
@@ -37,8 +45,6 @@ export class UISystem {
   private updateTerrainBuffer(): void {
     if (!this.minimapBuffer) return;
     
-    // Clear the buffer completely before redrawing
-    this.minimapBuffer.clear();
     const buffer = this.minimapBuffer;
     const tileSize = this.MINIMAP_SIZE / this.gameState.map.tiles.length;
     
@@ -66,7 +72,7 @@ export class UISystem {
           Math.max(-maxScroll, this.scrollY - event.delta),
           0
         );
-        return false; // Prevent default scrolling
+        return false;
       }
     };
 
@@ -79,11 +85,9 @@ export class UISystem {
 
       const mapX = this.p.width - this.SIDEBAR_WIDTH;
       
-      // Check if click is within minimap bounds
       if (this.p.mouseX >= mapX && this.p.mouseX <= mapX + this.MINIMAP_SIZE &&
           this.p.mouseY >= 0 && this.p.mouseY <= this.MINIMAP_SIZE) {
         
-        // Only allow minimap interaction if radar exists
         const hasRadar = this.gameState.buildings.some(b => b.definition.name === 'Radar' && b.isAlive());
         if (hasRadar) {
           this.isMinimapDragging = true;
@@ -105,7 +109,6 @@ export class UISystem {
     const worldX = ((this.p.mouseX - mapX) / this.MINIMAP_SIZE) * this.gameState.map.worldWidth;
     const worldY = (this.p.mouseY / this.MINIMAP_SIZE) * this.gameState.map.worldHeight;
     
-    // Center the camera on the clicked/dragged position
     this.gameState.camera.position.x = Math.max(0, Math.min(
       worldX - this.p.width / 2,
       this.gameState.map.worldWidth - this.p.width
@@ -117,8 +120,8 @@ export class UISystem {
   }
 
   private calculateMaxScroll(): number {
-    const totalContentHeight = Math.ceil(RAVEN_BUILDINGS.length / 2) * (this.GRID_SIZE + this.GRID_GAP);
-    const startY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + this.TAB_HEIGHT;
+    const totalContentHeight = Math.ceil(RAVEN_BUILDINGS.length / 2) * this.GRID_SIZE;
+    const startY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + (2 * this.CATEGORY_SIZE);
     const visibleHeight = this.p.height - startY - this.OPTIONS_BAR_HEIGHT - 4;
     return Math.max(0, totalContentHeight - visibleHeight);
   }
@@ -143,7 +146,6 @@ export class UISystem {
   }
 
   public update(): void {
-    // Store any required building highlights we need to draw
     const requiredBuildingHighlights: { x: number; y: number }[] = [];
     
     this.renderSidebar();
@@ -152,13 +154,11 @@ export class UISystem {
       this.updateMinimapPosition();
     }
     
-    // Reset overlay info before rendering buttons
     this.overlayInfo = null;
     
     this.renderTabBar();
     this.renderBuildButtons(requiredBuildingHighlights);
     
-    // Draw requirement highlights under everything else
     requiredBuildingHighlights.forEach(pos => {
       this.p.stroke('#fa4a4a');
       this.p.strokeWeight(2);
@@ -169,328 +169,236 @@ export class UISystem {
     this.renderSelectionInfo();
     this.renderOptionsBar();
     
-    // Render overlay last, on top of everything
+    if (this.gameState.isMenuOpen) {
+      this.menuSystem.render();
+    }
+    
     if (this.overlayInfo) {
       this.renderBuildingStatsOverlay(
         this.overlayInfo.building,
         this.overlayInfo.x,
-        this.overlayInfo.y,
-        requiredBuildingHighlights
+        this.overlayInfo.y
       );
     }
+  }
+
+  private renderSidebar(): void {
+    this.p.push();
+    this.p.fill(20);
+    this.p.noStroke();
+    this.p.rect(this.p.width - this.SIDEBAR_WIDTH, 0, this.SIDEBAR_WIDTH, this.p.height);
+
+    // Info panel background
+    this.p.fill(30);
+    this.p.rect(
+      this.p.width - this.SIDEBAR_WIDTH,
+      this.MINIMAP_SIZE,
+      this.SIDEBAR_WIDTH,
+      this.INFO_PANEL_HEIGHT + (this.gameState.selectedEntities.length > 0 ? 60 : 0)
+    );
+
+    // Money and power info
+    this.p.fill(200);
+    this.p.textAlign(this.p.CENTER, this.p.CENTER);
+    this.p.textSize(14);
+    const x = this.p.width - this.SIDEBAR_WIDTH;
+    const infoY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT / 2;
+    
+    this.p.text(`💰 ${this.gameState.money.toLocaleString()}`, x + this.SIDEBAR_WIDTH / 4, infoY);
+    
+    const powerText = `⚡ ${this.gameState.powerUsed}/${this.gameState.powerGenerated}`;
+    const powerColor = this.gameState.powerUsed > this.gameState.powerGenerated ? '#ff4a4a' : '#ffffff';
+    this.p.fill(powerColor);
+    this.p.text(powerText, x + (this.SIDEBAR_WIDTH * 3) / 4, infoY);
+
+    // Selection info
+    if (this.gameState.selectedEntities.length > 0) {
+      this.p.fill(200);
+      this.p.textAlign(this.p.LEFT, this.p.TOP);
+      this.p.textSize(12);
+      
+      this.gameState.selectedEntities.forEach((entity, index) => {
+        const health = `${entity.health}/${entity.maxHealth}`;
+        this.p.text(
+          `Unit ${index + 1} - Health: ${health}`,
+          x + 10,
+          this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + 10 + index * 20
+        );
+      });
+    }
+    this.p.pop();
+  }
+
+  private renderOptionsBar(): void {
+    this.p.push();
+    this.p.fill(20);
+    this.p.noStroke();
+    this.p.rect(0, this.p.height - 30, this.p.width - this.SIDEBAR_WIDTH, 30);
+
+    this.p.fill(200);
+    this.p.textAlign(this.p.LEFT, this.p.CENTER);
+    this.p.textSize(12);
+    this.p.text('Options: [ESC] Menu  [H]alt  [B]uild', 10, this.p.height - 15);
+    this.p.pop();
+  }
+
+  private renderMinimap(): void {
+    const x = this.p.width - this.SIDEBAR_WIDTH;
+    const y = 0;
+    this.minimapSystem.render(x, y);
+  }
+
+  private renderSelectionInfo(): void {
+    // Selection info now handled in renderSidebar
   }
 
   private renderTabBar(): void {
     const x = this.p.width - this.SIDEBAR_WIDTH;
     const y = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT;
+    
+    const categories = [
+      { id: 'construction', label: 'Construction', icon: '🏗️', emoji: '🏗️' },
+      { id: 'infantry', label: 'Infantry', icon: '👥', emoji: '👥' },
+      { id: 'vehicles', label: 'Vehicles', icon: '🚛', emoji: '🚛' },
+      { id: 'defense', label: 'Defense', icon: '🛡️', emoji: '🛡️' }
+    ];
 
     this.p.push();
-    // Render each tab using a helper function
-    this.renderTab(x, y, 'Construction', 'construction', 0);
-    this.renderTab(x + this.SIDEBAR_WIDTH / 2, y, 'Units', 'units', 1);
+    // Render category tabs in 2x2 grid
+    categories.forEach((category, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const categoryX = x + (col * (this.SIDEBAR_WIDTH / 2));
+      const categoryY = y + (row * this.CATEGORY_SIZE);
+      this.renderCategoryTab(categoryX, categoryY, category.label, category.id as any);
+    });
+    
     this.p.pop();
   }
 
-  private renderTab(x: number, y: number, label: string, tab: 'construction' | 'units', index: number): void {
+  private renderCategoryTab(
+    x: number, 
+    y: number, 
+    label: string,
+    category: 'construction' | 'infantry' | 'vehicles' | 'defense'
+  ): void {
     // Check if mouse is over tab
     const isHovered = this.p.mouseX >= x && this.p.mouseX < x + this.SIDEBAR_WIDTH / 2 &&
-                     this.p.mouseY >= y && this.p.mouseY < y + this.TAB_HEIGHT;
+                     this.p.mouseY >= y && this.p.mouseY < y + this.CATEGORY_SIZE;
     
     // Handle click
     if (isHovered && this.p.mouseIsPressed && this.p.mouseButton === this.p.LEFT) {
-      this.selectedTab = tab;
+      this.selectedCategory = category;
       this.scrollY = 0; // Reset scroll position when switching tabs
     }
 
-    this.p.fill(this.selectedTab === tab ? 40 : 20);
-    if (isHovered) this.p.fill(this.selectedTab === tab ? 50 : 30);
+    this.p.fill(this.selectedCategory === category ? 40 : 20);
+    if (isHovered) this.p.fill(this.selectedCategory === category ? 50 : 30);
     this.p.noStroke();
-    this.p.rect(x, y, this.SIDEBAR_WIDTH / 2, this.TAB_HEIGHT);
+    this.p.rect(x, y, this.SIDEBAR_WIDTH / 2 + (x === this.p.width - this.SIDEBAR_WIDTH ? 1 : 0), this.CATEGORY_SIZE);
 
     this.p.fill(255);
     this.p.textAlign(this.p.CENTER, this.p.CENTER);
-    this.p.textSize(12);
-    this.p.text(label, x + this.SIDEBAR_WIDTH / 4, y + this.TAB_HEIGHT / 2);
+    this.p.textSize(11);
+
+    // Draw icon and text with proper spacing
+    const iconX = x + this.SIDEBAR_WIDTH / 4 - 20;
+    const textX = x + this.SIDEBAR_WIDTH / 4 + 10;
+    const centerY = y + this.CATEGORY_SIZE / 2;
+    
+    this.p.textSize(16);
+    const emoji = this.getCategoryEmoji(category);
+    this.p.text(emoji, iconX, centerY);
+    
+    this.p.textSize(11);
+    this.p.text(label, textX, centerY);
   }
 
-  private renderBuildButtons(requiredBuildingHighlights: { x: number; y: number }[]): void {
-    const startX = this.p.width - this.SIDEBAR_WIDTH;
-    const startY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + this.TAB_HEIGHT;
-    const visibleHeight = this.p.height - startY - this.OPTIONS_BAR_HEIGHT - 4;
-
-    // Handle scrolling
-    this.handleScroll();
-
-    this.p.push();
-    this.p.fill(20);
-    this.p.noStroke();
-    this.p.rect(startX, startY, this.SIDEBAR_WIDTH, visibleHeight);
-
-    this.p.beginShape();
-    this.p.vertex(startX, startY);
-    this.p.vertex(startX + this.SIDEBAR_WIDTH, startY);
-    this.p.vertex(startX + this.SIDEBAR_WIDTH, startY + visibleHeight);
-    this.p.vertex(startX, startY + visibleHeight);
-    this.p.endShape(this.p.CLOSE);
-    this.p.drawingContext.clip();
-
-    if (this.selectedTab === 'construction') {
-      // Render Raven faction building buttons
-      for (let i = 0; i < RAVEN_BUILDINGS.length; i++) {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = startX + this.GRID_GAP + col * (this.GRID_SIZE + this.GRID_GAP);
-        const y = startY + this.GRID_GAP + row * (this.GRID_SIZE + this.GRID_GAP) + this.scrollY;
-
-        if (y < startY - this.GRID_SIZE || y > startY + visibleHeight) continue;
-        this.renderBuildingButton(x, y, RAVEN_BUILDINGS[i], requiredBuildingHighlights);
-      }
-    } else {
-      // Render unit training options
-      this.renderUnitButtons(startX, startY, visibleHeight);
-    }
-    this.p.pop();
-  }
-
-  private renderUnitButtons(startX: number, startY: number, visibleHeight: number): void {
-    const units = [
-      { name: 'Scout', cost: 400, buildTime: 15, icon: '👁️' },
-      { name: 'Infantry', cost: 600, buildTime: 20, icon: '🔫' },
-      { name: 'Heavy', cost: 800, buildTime: 25, icon: '🛡️' },
-      { name: 'Engineer', cost: 700, buildTime: 20, icon: '🔧' },
-      { name: 'Medic', cost: 500, buildTime: 15, icon: '💉' },
-      { name: 'Sniper', cost: 800, buildTime: 25, icon: '🎯' }
-    ];
-
-    for (let i = 0; i < units.length; i++) {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = startX + this.GRID_GAP + col * (this.GRID_SIZE + this.GRID_GAP);
-      const y = startY + this.GRID_GAP + row * (this.GRID_SIZE + this.GRID_GAP) + this.scrollY;
-
-      if (y < startY - this.GRID_SIZE || y > startY + visibleHeight) continue;
-
-      const unit = units[i];
-      
-      // Button background
-      this.p.fill(30);
-      this.p.noStroke();
-      this.p.rect(x, y, this.GRID_SIZE, this.GRID_SIZE, 4);
-
-      // Unit icon
-      this.p.textAlign(this.p.CENTER, this.p.CENTER);
-      this.p.textSize(32);
-      this.p.text(unit.icon, x + this.GRID_SIZE / 2, y + this.GRID_SIZE / 2 - 15);
-
-      // Unit info
-      this.p.fill(200);
-      this.p.textSize(12);
-      this.p.text(unit.name, x + this.GRID_SIZE / 2, y + this.GRID_SIZE - 30);
-      
-      // Cost and build time
-      this.p.textSize(10);
-      this.p.text(`$${unit.cost}`, x + this.GRID_SIZE / 2 - 15, y + this.GRID_SIZE - 15);
-      this.p.text(`⏱️${unit.buildTime}s`, x + this.GRID_SIZE / 2 + 15, y + this.GRID_SIZE - 15);
+  private getCategoryEmoji(category: string): string {
+    switch (category) {
+      case 'construction':
+        return '🏗️';
+      case 'infantry':
+        return '👥';
+      case 'vehicles':
+        return '🚛';
+      case 'defense':
+        return '🛡️';
+      default:
+        return '🏗️';
     }
   }
 
-  private renderBuildingButton(x: number, y: number, building: BuildingDefinition, requiredBuildingHighlights: { x: number; y: number }[]): void {
-    // Check if this building is selected for placement
+  private renderBuildingButton(
+    x: number, 
+    y: number, 
+    width: number,
+    height: number,
+    building: BuildingDefinition, 
+    requiredBuildingHighlights: { x: number; y: number }[]
+  ): void {
     const isSelected = this.gameState.buildingToPlace === building;
     
-    // Button background
-    this.p.fill(isSelected ? 40 : 30);
+    this.p.fill(isSelected ? 40 : 20);
     this.p.noStroke();
-    this.p.rect(x, y, this.GRID_SIZE, this.GRID_SIZE, 4);
+    this.p.rect(x, y, width, height, 4);
 
-    // Check if mouse is over this button
-    const isHovered = this.p.mouseX > x && this.p.mouseX < x + this.GRID_SIZE &&
-                     this.p.mouseY > y && this.p.mouseY < y + this.GRID_SIZE;
+    const isHovered = this.p.mouseX > x && this.p.mouseX < x + width &&
+                     this.p.mouseY > y && this.p.mouseY < y + height;
 
     if (isHovered) {
       this.hoveredBuildingDef = building;
+      this.overlayInfo = {
+        building,
+        x: x - 190, // Position tooltip to the left of the button
+        y: Math.min(y, this.p.height - 160) // Keep tooltip in view
+      };
     }
 
-    // Check if building is available based on tech tree
     const isAvailable = this.isBuildingAvailable(building);
     if (!isAvailable) {
       this.p.fill(0, 0, 0, 150);
-      this.p.rect(x, y, this.GRID_SIZE, this.GRID_SIZE, 4);
+      this.p.rect(x, y, width, height, 4);
     }
 
-    // Building emoji icon
     this.p.textAlign(this.p.CENTER, this.p.CENTER);
     this.p.textSize(32);
     const emoji = this.getBuildingEmoji(building.name);
+    
+    // Center the emoji vertically
+    const emojiY = y + height / 2 - 10;
     this.p.fill(isAvailable ? 255 : 100);
-    this.p.text(emoji, x + this.GRID_SIZE / 2, y + this.GRID_SIZE / 2 - 15);
+    this.p.text(emoji, x + width / 2, emojiY);
 
-    // Building info
     this.p.fill(isAvailable ? 200 : 100);
     this.p.noStroke();
     this.p.textAlign(this.p.CENTER, this.p.CENTER);
     this.p.textSize(10);
-    this.p.text(building.name, x + this.GRID_SIZE / 2, y + this.GRID_SIZE - 30);
+    this.p.text(building.name, x + width / 2, y + height - 25);
     
-    // Cost and power usage
     this.p.textSize(10);
     this.p.textAlign(this.p.CENTER, this.p.CENTER);
-    this.p.text(`$${building.cost}`, x + this.GRID_SIZE / 2 - 15, y + this.GRID_SIZE - 15);
-    this.p.text(`⏱️${building.buildTime}s`, x + this.GRID_SIZE / 2 + 15, y + this.GRID_SIZE - 15);
     
-    // Make button clickable
+    // Adjust cost and build time spacing
+    const statsY = y + height - 10;
+    this.p.text(`$${building.cost}`, x + width / 2 - 20, statsY);
+    this.p.text(`⏱️${building.buildTime}s`, x + width / 2 + 15, statsY);
+    
     if (this.p.mouseIsPressed && 
-        this.p.mouseX > x && this.p.mouseX < x + this.GRID_SIZE &&
-        this.p.mouseY > y && this.p.mouseY < y + this.GRID_SIZE &&
+        this.p.mouseX > x && this.p.mouseX < x + width &&
+        this.p.mouseY > y && this.p.mouseY < y + height &&
         isAvailable &&
         this.gameState.money >= building.cost) {
       this.gameState.buildingToPlace = building;
     }
-
-    // Render stats overlay if hovered
-    if (isHovered) {
-      this.overlayInfo = {
-        building,
-        x: x + this.GRID_SIZE + 5,
-        y
-      };
-    }
   }
 
-  private isBuildingAvailable(building: BuildingDefinition): boolean {
-    // If base is not deployed, no buildings are available
-    if (!this.gameState.isBaseDeployed) return false;
-
-    // Check if player can afford it
-    if (this.gameState.money < building.cost) return false;
-    
-    // Power Plant is available as soon as base is deployed
-    if (building.name === 'Power Plant') return true;
-    
-    // Check requirements for other buildings
-    if (!building.requirements) return true;
-    return building.requirements.every(req => {
-      return this.gameState.buildings.some(b => 
-        b.definition.name === req && 
-        b.isAlive()
-      );
-    });
-  }
-
-  private renderBuildingStatsOverlay(building: BuildingDefinition, x: number, y: number, requiredBuildingHighlights: { x: number; y: number }[]): void {
-    const padding = 10;
-    const width = 200;
-    const lineHeight = 20;
-    const requirements = building.requirements || [];
-    const height = 140 + (requirements.length > 0 ? lineHeight + 5 : 0);
-
-    // Always position to the left of the button
-    const adjustedX = x - width - this.GRID_SIZE - 10;
-    
-    // Adjust Y to stay in view
-    const adjustedY = Math.min(
-      Math.max(padding, y),
-      this.p.height - height - padding
-    );
-    
-    // Background
-    this.p.fill(40);
-    this.p.stroke(60);
-    this.p.strokeWeight(2);
-    
-    // Draw shadow
-    this.p.drawingContext.shadowBlur = 15;
-    this.p.drawingContext.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.p.rect(adjustedX, adjustedY, width, height, 4);
-    this.p.drawingContext.shadowBlur = 0;
-    
-    // Draw pointer
-    this.p.fill(40);
-    this.p.noStroke();
-    this.p.triangle(
-      adjustedX + width,
-      adjustedY + 20,
-      adjustedX + width + 10,
-      adjustedY + 25,
-      adjustedX + width,
-      adjustedY + 30
-    );
-
-    // Content
-    this.p.noStroke();
-    this.p.fill(255);
-    this.p.textAlign(this.p.LEFT, this.p.TOP);
-    this.p.textSize(14);
-    this.p.textStyle(this.p.BOLD);
-    this.p.text(building.name, adjustedX + padding, adjustedY + padding);
-    this.p.textStyle(this.p.NORMAL);
-
-    this.p.textSize(12);
-    this.p.fill(180);
-    let currentY = adjustedY + padding + lineHeight + 5;
-
-    // Description
-    this.p.fill(150);
-    this.p.text(building.description, adjustedX + padding, currentY, width - padding * 2);
-    currentY += lineHeight * 2;
-
-    // Stats group
-    this.p.fill(40);
-    this.p.rect(adjustedX + padding - 2, currentY - 2, width - padding * 2 + 4, lineHeight * 3 + 4, 2);
-    
-    this.p.fill(180);
-    this.p.text(`Cost: $${building.cost}`, adjustedX + padding, currentY);
-    currentY += lineHeight;
-
-    const powerText = building.powerUsage < 0 
-      ? `Power Generation: +${-building.powerUsage}`
-      : `Power Usage: ${building.powerUsage}`;
-    this.p.text(powerText, adjustedX + padding, currentY);
-    currentY += lineHeight;
-
-    this.p.text(`Build Time: ${building.buildTime}s`, adjustedX + padding, currentY);
-    currentY += lineHeight;
-
-    // Requirements
-    if (requirements.length > 0) {
-      currentY += 5;
-      this.p.fill(40);
-      this.p.rect(adjustedX + padding - 2, currentY - 2, width - padding * 2 + 4, lineHeight * requirements.length + 4, 2);
-      
-      requirements.forEach((req, index) => {
-        const hasReq = this.gameState.buildings.some(b => 
-          b.definition.name === req && 
-          b.isAlive()
-        );
-        
-        this.p.fill(180);
-        this.p.text('Requires:', adjustedX + padding, currentY);
-        this.p.fill(hasReq ? '#4afa4a' : '#fa4a4a');
-        
-        // Draw lock icon for unavailable buildings
-        if (!hasReq) {
-          this.p.text('🔒', adjustedX + padding + 70, currentY);
-        }
-        
-        this.p.text(req, adjustedX + padding + 95, currentY);
-        currentY += lineHeight;
-        
-        // Highlight required building in the menu if it exists
-        if (!hasReq) {
-          const reqBuilding = RAVEN_BUILDINGS.find(b => b.name === req);
-          if (reqBuilding) {
-            const reqIndex = RAVEN_BUILDINGS.indexOf(reqBuilding);
-            const reqCol = reqIndex % 2;
-            const reqRow = Math.floor(reqIndex / 2);
-            const reqX = this.p.width - this.SIDEBAR_WIDTH + this.GRID_GAP + reqCol * (this.GRID_SIZE + this.GRID_GAP);
-            const reqY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + this.TAB_HEIGHT + this.GRID_GAP + reqRow * (this.GRID_SIZE + this.GRID_GAP) + this.scrollY;
-            
-            // Store highlight position to draw later
-            requiredBuildingHighlights.push({ x: reqX, y: reqY });
-          }
-        }
-      });
-    }
+  private renderBuildingStatsOverlay(
+    building: BuildingDefinition,
+    x: number,
+    y: number
+  ): void {
+    this.tooltipSystem.renderBuildingTooltip(building, x, y);
   }
 
   private getBuildingEmoji(buildingName: string): string {
@@ -516,163 +424,166 @@ export class UISystem {
     }
   }
 
-  private renderSidebar(): void {
-    this.p.push();
-    this.p.fill(20);
-    this.p.noStroke();
-    this.p.rect(this.p.width - this.SIDEBAR_WIDTH, 0, this.SIDEBAR_WIDTH, this.p.height);
-
-    // Resource info panel background
-    this.p.fill(30);
-    this.p.rect(
-      this.p.width - this.SIDEBAR_WIDTH,
-      this.MINIMAP_SIZE,
-      this.SIDEBAR_WIDTH,
-      this.INFO_PANEL_HEIGHT
-    );
-
-    // Credits
-    this.p.fill(200);
-    this.p.textAlign(this.p.CENTER, this.p.CENTER);
-    this.p.textSize(14);
-    const x = this.p.width - this.SIDEBAR_WIDTH;
-    const infoY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT / 2;
-    
-    // Credits
-    this.p.text(`💰 ${this.gameState.money.toLocaleString()}`, x + this.SIDEBAR_WIDTH / 4, infoY);
-    
-    // Power usage
-    const powerText = `⚡ ${this.gameState.powerUsed}/${this.gameState.powerGenerated}`;
-    const powerColor = this.gameState.powerUsed > this.gameState.powerGenerated ? '#ff4a4a' : '#ffffff';
-    this.p.fill(powerColor);
-    this.p.text(powerText, x + (this.SIDEBAR_WIDTH * 3) / 4, infoY);
-    this.p.pop();
-  }
-
-  private renderOptionsBar(): void {
-    this.p.push();
-    this.p.fill(20);
-    this.p.noStroke();
-    this.p.rect(0, this.p.height - 30, this.p.width - this.SIDEBAR_WIDTH, 30);
-
-    this.p.fill(200);
-    this.p.textAlign(this.p.LEFT, this.p.CENTER);
-    this.p.textSize(12);
-    this.p.text('Options: [S]ave  [L]oad  [P]ause', 10, this.p.height - 15);
-    this.p.pop();
-  }
-
-  private renderMinimap(): void {
-    const x = this.p.width - this.SIDEBAR_WIDTH;
-    const y = 0;
-    const hasOperationalRadar = this.gameState.buildings.some(b => 
-      b.definition.name === 'Radar' && 
-      b.isAlive() && 
-      !this.gameState.isPowerShortage
-    );
-
-    this.p.push();
-    
-    // Draw background
-    this.p.fill(20);
-    this.p.noStroke();
-    this.p.rect(x, y, this.MINIMAP_SIZE, this.MINIMAP_SIZE);
-    
-    // Draw border
-    this.p.stroke(40);
-    this.p.strokeWeight(2);
-    this.p.noFill();
-    this.p.rect(x + 1, y + 1, this.MINIMAP_SIZE - 2, this.MINIMAP_SIZE - 2);
-    
-    // Draw terrain from buffer
-    if (this.minimapBuffer) {
-      this.p.image(this.minimapBuffer, x, y);
-      
-      // Redraw terrain buffer if it's empty (fixes flickering)
-      if (!this.minimapBuffer.get(0, 0)[3]) {
-        this.updateTerrainBuffer();
-      }
-    }
-    
-    if (hasOperationalRadar) {
-      // Draw radar scan effect
-      this.radarAngle = (this.radarAngle + 0.03) % (Math.PI * 2);
-      const scanGradient = this.p.drawingContext.createConicGradient(
-        this.radarAngle,
-        x + this.MINIMAP_SIZE / 2,
-        y + this.MINIMAP_SIZE / 2
+  private isBuildingAvailable(building: BuildingDefinition): boolean {
+    if (!this.gameState.isBaseDeployed) return false;
+    if (this.gameState.money < building.cost) return false;
+    if (building.name === 'Power Plant') return true;
+    if (!building.requirements) return true;
+    return building.requirements.every(req => {
+      return this.gameState.buildings.some(b => 
+        b.definition.name === req && 
+        b.isAlive()
       );
-      scanGradient.addColorStop(0, 'rgba(0, 255, 0, 0.2)');
-      scanGradient.addColorStop(0.1, 'rgba(0, 255, 0, 0)');
-      this.p.drawingContext.fillStyle = scanGradient;
-      this.p.rect(x, y, this.MINIMAP_SIZE, this.MINIMAP_SIZE);
+    });
+  }
 
-      // Draw buildings
-      this.gameState.buildings.forEach(building => {
-        if (!building.isAlive()) return;
-        const miniX = x + (building.position.x / this.gameState.map.worldWidth) * this.MINIMAP_SIZE;
-        const miniY = y + (building.position.y / this.gameState.map.worldHeight) * this.MINIMAP_SIZE;
-        
-        // Larger, more visible buildings
-        this.p.fill(building.playerId === 'player1' ? '#4a9fff' : '#ff4a4a');
-        this.p.noStroke();
-        this.p.rect(miniX - 3, miniY - 3, 6, 6);
-      });
+  private renderBuildButtons(requiredBuildingHighlights: { x: number; y: number }[]): void {
+    const startX = this.p.width - this.SIDEBAR_WIDTH;
+    const startY = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + (2 * this.CATEGORY_SIZE);
+    const visibleHeight = this.p.height - startY - this.OPTIONS_BAR_HEIGHT - 4;
 
-      // Draw units
-      this.gameState.units.forEach(unit => {
-        const miniX = x + (unit.position.x / this.gameState.map.worldWidth) * this.MINIMAP_SIZE;
-        const miniY = y + (unit.position.y / this.gameState.map.worldHeight) * this.MINIMAP_SIZE;
-        
-        this.p.fill(unit.playerId === 'player1' ? '#4a9fff' : '#ff4a4a');
-        this.p.noStroke();
-        this.p.circle(miniX, miniY, 3);
-      });
+    // Handle scrolling
+    this.handleScroll();
 
-      // Draw viewport rectangle
-      const viewX = x + (this.gameState.camera.position.x / this.gameState.map.worldWidth) * this.MINIMAP_SIZE;
-      const viewY = y + (this.gameState.camera.position.y / this.gameState.map.worldHeight) * this.MINIMAP_SIZE;
-      const viewW = (this.p.width / this.gameState.map.worldWidth) * this.MINIMAP_SIZE;
-      const viewH = (this.p.height / this.gameState.map.worldHeight) * this.MINIMAP_SIZE;
-      
-      // More visible viewport rectangle
-      this.p.noFill();
-      this.p.stroke(255, 100);
-      this.p.strokeWeight(1);
-      this.p.rect(viewX, viewY, viewW, viewH);
-    } else {
-      // Show appropriate message based on radar state
-      const radarExists = this.gameState.buildings.some(b => b.definition.name === 'Radar' && b.isAlive());
-      const message = this.gameState.isPowerShortage && radarExists ? 'RADAR OFFLINE' : 'NO RADAR';
-      
-      this.p.fill(255, 100);
-      this.p.textAlign(this.p.CENTER, this.p.CENTER);
-      this.p.textSize(14);
-      this.p.text(message, x + this.MINIMAP_SIZE / 2, y + this.MINIMAP_SIZE / 2);
-      
-      // Draw fog of war effect
-      this.p.fill(0, 0, 0, 25);
-      this.p.noStroke();
-      this.p.rect(x, y, this.MINIMAP_SIZE, this.MINIMAP_SIZE);
+    this.p.push();
+    this.p.fill(20);
+    this.p.noStroke();
+    this.p.rect(startX, startY, this.SIDEBAR_WIDTH, visibleHeight);
+
+    // Create clipping mask for content
+    this.p.beginShape();
+    this.p.vertex(startX, startY);
+    this.p.vertex(startX + this.SIDEBAR_WIDTH, startY);
+    this.p.vertex(startX + this.SIDEBAR_WIDTH, startY + visibleHeight);
+    this.p.vertex(startX, startY + visibleHeight);
+    this.p.endShape(this.p.CLOSE);
+    this.p.drawingContext.clip();
+
+    switch (this.selectedCategory) {
+      case 'construction':
+        this.renderConstructionButtons(startX, startY, visibleHeight, requiredBuildingHighlights);
+        break;
+      case 'infantry':
+        this.renderInfantryButtons(startX, startY, visibleHeight);
+        break;
+      case 'vehicles':
+        this.renderVehicleButtons(startX, startY, visibleHeight);
+        break;
+      case 'defense':
+        this.renderDefenseButtons(startX, startY, visibleHeight);
+        break;
     }
+
     this.p.pop();
   }
 
-  private renderSelectionInfo(): void {
-    if (this.gameState.selectedEntities.length === 0) return;
-
-    const x = this.p.width - this.SIDEBAR_WIDTH;
-    const y = this.MINIMAP_SIZE + this.INFO_PANEL_HEIGHT + this.TAB_HEIGHT +
-              (4 * ((this.SIDEBAR_WIDTH / 2) + this.GRID_GAP)) +
-              10;
-    this.p.push();
-    this.p.fill(255);
-    this.p.textAlign(this.p.LEFT, this.p.TOP);
-
-    this.gameState.selectedEntities.forEach((entity, index) => {
-      const health = `${entity.health}/${entity.maxHealth}`;
-      this.p.text(`Unit ${index + 1} - Health: ${health}`, x, y + index * 20);
+  private renderConstructionButtons(
+    startX: number,
+    startY: number,
+    visibleHeight: number,
+    requiredBuildingHighlights: { x: number; y: number }[]
+  ): void {
+    const grid = this.gridSystem.calculateGrid({
+      columns: 2,
+      width: this.SIDEBAR_WIDTH,
+      cellHeight: this.GRID_SIZE,
+      padding: this.CELL_PADDING
     });
-    this.p.pop();
+
+    RAVEN_BUILDINGS.forEach((building, index) => {
+      const cell = grid.getCellPosition(index, this.scrollY);
+      const y = startY + cell.y;
+
+      if (y < startY - this.GRID_SIZE || y > startY + visibleHeight) return;
+
+      this.renderBuildingButton(
+        startX + cell.x,
+        y,
+        cell.width,
+        cell.height,
+        building,
+        requiredBuildingHighlights
+      );
+    });
+  }
+
+  private renderInfantryButtons(startX: number, startY: number, visibleHeight: number): void {
+    const infantry = [
+      { name: 'Scout', cost: 400, buildTime: 15, icon: '👁️' },
+      { name: 'Infantry', cost: 600, buildTime: 20, icon: '🔫' },
+      { name: 'Engineer', cost: 700, buildTime: 20, icon: '🔧' },
+      { name: 'Medic', cost: 500, buildTime: 15, icon: '💉' },
+      { name: 'Sniper', cost: 800, buildTime: 25, icon: '🎯' }
+    ];
+
+    this.renderUnitGrid(infantry, startX, startY, visibleHeight);
+  }
+
+  private renderVehicleButtons(startX: number, startY: number, visibleHeight: number): void {
+    const vehicles = [
+      { name: 'Tank', cost: 1200, buildTime: 30, icon: '🚀' },
+      { name: 'APC', cost: 900, buildTime: 25, icon: '🚛' },
+      { name: 'Artillery', cost: 1500, buildTime: 35, icon: '💥' }
+    ];
+
+    this.renderUnitGrid(vehicles, startX, startY, visibleHeight);
+  }
+
+  private renderDefenseButtons(startX: number, startY: number, visibleHeight: number): void {
+    const defenses = [
+      { name: 'Turret', cost: 600, buildTime: 20, icon: '🗼' },
+      { name: 'AA Gun', cost: 800, buildTime: 25, icon: '🎯' },
+      { name: 'Bunker', cost: 1000, buildTime: 30, icon: '🏰' }
+    ];
+
+    this.renderUnitGrid(defenses, startX, startY, visibleHeight);
+  }
+
+  private renderUnitGrid(units: Array<{ name: string; cost: number; buildTime: number; icon: string }>, 
+                        startX: number, startY: number, visibleHeight: number): void {
+    const columns = 2;
+    const gridWidth = this.SIDEBAR_WIDTH;
+    const cellWidth = gridWidth / columns;
+    const cellHeight = this.GRID_SIZE;
+    const cellPadding = 5;
+
+    for (let i = 0; i < units.length; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = startX + col * cellWidth + cellPadding;
+      const y = startY + row * cellHeight + this.scrollY + cellPadding;
+      const effectiveWidth = cellWidth - (cellPadding * 2);
+      const effectiveHeight = cellHeight - (cellPadding * 2);
+
+      if (y < startY - this.GRID_SIZE || y > startY + visibleHeight) continue;
+
+      const unit = units[i];
+      
+      this.p.fill(20);
+      this.p.noStroke();
+      this.p.rect(x, y, effectiveWidth, effectiveHeight, 4);
+
+      // Hover effect
+      const isHovered = this.p.mouseX > x && this.p.mouseX < x + effectiveWidth &&
+                       this.p.mouseY > y && this.p.mouseY < y + effectiveHeight;
+      if (isHovered) {
+        this.p.fill(30);
+        this.p.rect(x, y, effectiveWidth, effectiveHeight, 4);
+      }
+
+      this.p.textAlign(this.p.CENTER, this.p.CENTER);
+      this.p.textSize(32);
+      this.p.fill(255);
+      this.p.text(unit.icon, x + effectiveWidth / 2, y + effectiveHeight / 2 - 15);
+
+      this.p.fill(200);
+      this.p.textSize(12);
+      this.p.text(unit.name, x + effectiveWidth / 2, y + effectiveHeight - 30);
+      
+      this.p.textSize(10);
+      this.p.fill(180);
+      this.p.text(`$${unit.cost}`, x + effectiveWidth / 2 - 15, y + effectiveHeight - 15);
+      this.p.text(`⏱️${unit.buildTime}s`, x + effectiveWidth / 2 + 15, y + effectiveHeight - 15);
+    }
   }
 }
