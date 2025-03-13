@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Steel - Files</title>
+    <script>
+        async function fetchDocs() {
+            const basePath = "docs/";
+            const table = document.getElementById("fileTable");
+
+            // List of subdirectories to fetch
+            const categories = [
+                "Music/AEGIS",
+                "Music/Misc",
+                "Music/Raven",
+                "Terrain Assets/Desert tiles zone 1",
+                "Terrain Assets/Desert tiles zone 2",
+                "Terrain Assets/Desert tiles zone 3",
+                "Terrain Assets/Fauna",
+                "Terrain Assets/Resource",
+                "Terrain Assets/Rock Terrain",
+                "Terrain Assets/Rocks"
+            ];
+
+            for (let category of categories) {
+                let row = table.insertRow();
+                let cell = row.insertCell();
+                cell.colSpan = 2;
+                cell.innerHTML = `<strong>${category.replace(/\//g, " > ")}</strong>`;
+                cell.style.backgroundColor = "#222";
+                cell.style.color = "#fff";
+
+                try {
+                    let response = await fetch(basePath + category);
+                    if (!response.ok) throw new Error("Directory not accessible");
+
+                    let parser = new DOMParser();
+                    let doc = parser.parseFromString(await response.text(), "text/html");
+                    let links = [...doc.querySelectorAll("a")];
+
+                    links.forEach(link => {
+                        let fileName = link.textContent;
+                        if (!fileName.endsWith("/")) { // Exclude subfolders
+                            let row = table.insertRow();
+                            row.insertCell().textContent = fileName;
+                            row.insertCell().innerHTML = `<a href="${basePath + category}/${fileName}" target="_blank">Download</a>`;
+                        }
+                    });
+                } catch (error) {
+                    let row = table.insertRow();
+                    row.insertCell().colSpan = 2;
+                    row.insertCell().textContent = "Error loading contents.";
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #fff;
+            text-align: center;
+            margin: 20px;
+        }
+        table {
+            width: 80%;
+            margin: auto;
+            border-collapse: collapse;
+            background: #1c1c1c;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #444;
+        }
+        th {
+            background: #333;
+        }
+        a {
+            color: #ffcc00;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body onload="fetchDocs()">
+    <h1>Shadow Steel - File Browser</h1>
+    <table id="fileTable">
+        <tr>
+            <th>File Name</th>
+            <th>Link</th>
+        </tr>
+    </table>
+</body>
+</html>
